@@ -48,7 +48,7 @@ def generate_2d_views(mri_data: np.ndarray, mask: Optional[np.ndarray] = None) -
         print(f"Coronal shape: {slice_coronal.shape}")
 
         # 4. Plot Layout Setup
-        fig, axes = plt.subplots(1, 3, figsize=(15, 6), facecolor='#020617')
+        fig, axes = plt.subplots(1, 3, figsize=(15, 6), facecolor='white')
         
         # Views mapping
         views = [
@@ -60,7 +60,7 @@ def generate_2d_views(mri_data: np.ndarray, mask: Optional[np.ndarray] = None) -
         for i, (img_slice, title) in enumerate(views):
             # Show MRI background in grayscale
             axes[i].imshow(img_slice.T if i != 0 else img_slice, cmap='gray', origin='lower')
-            axes[i].set_title(title, color='white', pad=10)
+            axes[i].set_title(title, color='black', fontsize=14, fontweight='bold', pad=10)
             axes[i].axis('off')
 
             # 5. Handle Overlay (Mask Alignment)
@@ -97,7 +97,7 @@ def generate_2d_views(mri_data: np.ndarray, mask: Optional[np.ndarray] = None) -
         output_path = os.path.join(output_dir, "mri_overlay.png")
 
         plt.tight_layout()
-        plt.savefig(output_path, bbox_inches="tight", facecolor=fig.get_facecolor())
+        plt.savefig(output_path, bbox_inches="tight", facecolor='white', dpi=150)
         plt.close(fig)
         
         logger.info(f"Corrected 2D Views saved to {output_path}")
