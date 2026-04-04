@@ -1,30 +1,30 @@
 """Stable 3D Interactive visualization for brain MRI using Scatter3d point cloud.
 
-This module uses go.Scatter3d (not go.Volume) for reliable rendering across
-all environments. Brain tissue is shown as a semi-transparent point cloud,
-and tumor is shown as a dense red cluster.
+Uses go.Scatter3d for reliable cross-environment rendering.
+Brain is shown as a semi-transparent point cloud; tumor as a dense red cluster.
 """
 
 import logging
 from typing import Optional
 import plotly.graph_objects as go
 import numpy as np
+from scipy.ndimage import zoom
 
 logger = logging.getLogger(__name__)
 
 
 def generate_3d_plot(mri_data: np.ndarray, mask: np.ndarray, theme: str = "grayscale") -> go.Figure:
-    """Generates a stable, interactive 3D brain + tumor visualization.
+    """Generates a stable, interactive 3D brain + tumor point-cloud visualization.
 
-    Uses Scatter3d point cloud for guaranteed rendering stability.
+    Handles resolution mismatches between high-res MRI and AI-processed masks.
 
     Args:
         mri_data (np.ndarray): Multi-modal MRI scan of shape (4, H, W, D).
-        mask (np.ndarray): Binary segmentation mask of shape (H, W, D).
+        mask (np.ndarray): Binary segmentation mask — any shape (H_m, W_m, D_m).
         theme (str): Visual color theme ('grayscale' or 'thermal').
 
     Returns:
-        go.Figure: A Plotly Figure with brain cloud and tumor overlay.
+        go.Figure: A Plotly Figure with brain point cloud and tumor overlay.
     """
     logger.info(f"Generating stable 3D point cloud (Theme: {theme})")
 
@@ -33,66 +33,83 @@ def generate_3d_plot(mri_data: np.ndarray, mask: np.ndarray, theme: str = "grays
         if mri_data is None:
             raise ValueError("MRI data is None")
         if mask is None:
-            raise ValueError("Mask is required for visualization")
+            raise ValueError("Mask is None")
 
         # Use FLAIR modality (index 0) as anatomical background
-        brain = mri_data[0]
+        brain = mri_data[0].astype("float32")
 
-        # ── Step 2: Normalize ─────────────────────────────────────────────────
-        brain = brain.astype("float32")
+        # ── Step 2: Normalize brain intensity to [0, 1] ───────────────────────
         brain = (brain - brain.min()) / (brain.max() - brain.min() + 1e-8)
 
-        # ── Step 3: Downsample (CRITICAL for performance) ─────────────────────
-        # Stride of 3 reduces voxel count by 27x — smooth 60fps interaction
-        brain = brain[::3, ::3, ::3]
-        mask  = mask[::3, ::3, ::3]
+        # ── Step 3: Downsample for performance (3x stride = 27x fewer voxels) ─
+        brain_ds = brain[::3, ::3, ::3]
 
-        # ── Step 4: Shape Validation ──────────────────────────────────────────
-        if brain.shape != mask.shape:
+        # ── Step 4: Align mask resolution to downsampled brain ────────────────
+        # The AI mask may be (128,128,64) while MRI is (240,240,155).
+        # We zoom the mask to match brain_ds using nearest-neighbour (order=0).
+        target_shape = brain_ds.shape
+        mask_float = mask.astype("float32")
+
+        if mask_float.shape != target_shape:
+            zoom_factors = (
+                target_shape[0] / mask_float.shape[0],
+                target_shape[1] / mask_float.shape[1],
+                target_shape[2] / mask_float.shape[2],
+            )
+            mask_ds = zoom(mask_float, zoom_factors, order=0)
+            logger.info(
+                f"Mask resampled from {mask_float.shape} → {mask_ds.shape} "
+                f"(brain_ds={target_shape})"
+            )
+        else:
+            mask_ds = mask_float
+
+        # Safety: shapes must match now
+        if brain_ds.shape != mask_ds.shape:
             raise ValueError(
-                f"Shape mismatch after downsampling: brain={brain.shape} mask={mask.shape}"
+                f"Shape mismatch after resampling: brain={brain_ds.shape} mask={mask_ds.shape}"
             )
 
-        # ── Step 5: Coordinate Grid ───────────────────────────────────────────
-        h, w, d = brain.shape
+        # ── Step 5: Build coordinate grid ─────────────────────────────────────
+        h, w, d = brain_ds.shape
         grid_x, grid_y, grid_z = np.mgrid[0:h, 0:w, 0:d]
 
-        # ── Step 6: Flatten Everything ────────────────────────────────────────
+        # ── Step 6: Flatten everything ────────────────────────────────────────
         x = grid_x.flatten()
         y = grid_y.flatten()
         z = grid_z.flatten()
-        brain_values = brain.flatten()
-        mask_values  = mask.flatten().astype(np.float32)
+        brain_values = brain_ds.flatten()
+        mask_values  = mask_ds.flatten()
 
-        print(f"[3D Plot] Grid shapes: x={x.shape} y={y.shape} z={z.shape} "
-              f"brain={brain_values.shape} mask={mask_values.shape}")
+        print(
+            f"[3D] Shapes — x:{x.shape} y:{y.shape} z:{z.shape} "
+            f"brain:{brain_values.shape} mask:{mask_values.shape}"
+        )
 
-        # ── Step 7: Filter Low-Intensity Brain Voxels ─────────────────────────
-        # Removes empty black background — reveals only actual brain tissue
-        threshold   = 0.1
-        brain_mask  = brain_values > threshold
+        # ── Step 7: Filter low-intensity voxels (removes background air) ──────
+        threshold  = 0.1
+        brain_sel  = brain_values > threshold
 
-        x_brain      = x[brain_mask]
-        y_brain      = y[brain_mask]
-        z_brain      = z[brain_mask]
-        brain_fil    = brain_values[brain_mask]
+        x_brain     = x[brain_sel]
+        y_brain     = y[brain_sel]
+        z_brain     = z[brain_sel]
+        brain_fil   = brain_values[brain_sel]
 
-        # ── Step 8: Filter Tumor Voxels ───────────────────────────────────────
-        tumor_mask = mask_values > 0
-        x_tumor    = x[tumor_mask]
-        y_tumor    = y[tumor_mask]
-        z_tumor    = z[tumor_mask]
+        # ── Step 8: Filter tumor voxels ───────────────────────────────────────
+        tumor_sel  = mask_values > 0
+        x_tumor    = x[tumor_sel]
+        y_tumor    = y[tumor_sel]
+        z_tumor    = z[tumor_sel]
 
-        print(f"[3D Plot] Brain points after filter: {len(x_brain):,}  |  "
-              f"Tumor points: {len(x_tumor):,}")
+        print(
+            f"[3D] Points — brain:{len(x_brain):,}  tumor:{len(x_tumor):,}"
+        )
 
-        # ── Step 9: Brain Scatter3d Trace ─────────────────────────────────────
+        # ── Step 9: Brain Scatter3d trace ─────────────────────────────────────
         brain_colorscale = "Gray" if theme == "grayscale" else "Portland"
 
         brain_trace = go.Scatter3d(
-            x=x_brain,
-            y=y_brain,
-            z=z_brain,
+            x=x_brain, y=y_brain, z=z_brain,
             mode="markers",
             marker=dict(
                 size=2,
@@ -104,25 +121,19 @@ def generate_3d_plot(mri_data: np.ndarray, mask: np.ndarray, theme: str = "grays
             name="Brain",
         )
 
-        # ── Step 10: Tumor Scatter3d Trace ────────────────────────────────────
-        tumor_trace = go.Scatter3d(
-            x=x_tumor,
-            y=y_tumor,
-            z=z_tumor,
-            mode="markers",
-            marker=dict(
-                size=4,
-                color="red",
-                opacity=0.85,
-            ),
-            name="Tumor",
-        )
-
-        # ── Step 11: Assemble Figure ──────────────────────────────────────────
+        # ── Step 10: Tumor Scatter3d trace (only if tumour exists) ────────────
         traces = [brain_trace]
-        if len(x_tumor) > 0:          # Only add tumor layer if tumour detected
+
+        if len(x_tumor) > 0:
+            tumor_trace = go.Scatter3d(
+                x=x_tumor, y=y_tumor, z=z_tumor,
+                mode="markers",
+                marker=dict(size=4, color="red", opacity=0.85),
+                name="Tumor",
+            )
             traces.append(tumor_trace)
 
+        # ── Step 11: Assemble figure ──────────────────────────────────────────
         fig = go.Figure(data=traces)
 
         # ── Step 12: Layout ───────────────────────────────────────────────────
@@ -138,7 +149,7 @@ def generate_3d_plot(mri_data: np.ndarray, mask: np.ndarray, theme: str = "grays
                 xaxis=dict(visible=False),
                 yaxis=dict(visible=False),
                 zaxis=dict(visible=False),
-                bgcolor="rgb(2, 6, 23)",         # GFG dark background
+                bgcolor="rgb(2, 6, 23)",
             ),
             margin=dict(l=0, r=0, t=50, b=0),
             height=600,
@@ -150,12 +161,15 @@ def generate_3d_plot(mri_data: np.ndarray, mask: np.ndarray, theme: str = "grays
             ),
         )
 
-        logger.info("Stable 3D plot generated successfully.")
+        logger.info(
+            f"Stable 3D plot done — {len(x_brain):,} brain pts, "
+            f"{len(x_tumor):,} tumor pts."
+        )
         return fig
 
     except Exception as e:
-        logger.error(f"3D Visualization Error: {str(e)}")
-        print(f"3D Visualization Error: {str(e)}")
+        logger.error(f"3D Visualization Error: {e}")
+        print(f"3D Visualization Error: {e}")
         import traceback
         traceback.print_exc()
         return go.Figure()
