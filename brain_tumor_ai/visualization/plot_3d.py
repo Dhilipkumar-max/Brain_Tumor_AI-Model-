@@ -101,19 +101,19 @@ def _mesh_pipeline(mri_data, mask, theme):
                                                    allow_degenerate=False)
         print(f"[3D Mesh] Brain — verts:{len(verts):,}  faces:{len(faces):,}")
 
-        # ── 6. Brain mesh colour by theme ─────────────────────────────────────
+        # ── 6. Brain mesh colour by theme (high-contrast for dark background) ─
         theme_color = {
-            "grayscale": ("lightgray",   "#999999"),
-            "thermal":   ("lightsalmon", "#FF8C69"),
-            "rainbow":   ("lightblue",   "#87CEFA"),
-            "plasma":    ("mediumpurple","#9370DB"),
-        }.get(theme, ("lightgray", "#AAAAAA"))
+            "grayscale": "#C0C0C0",   # silver — stands out on black
+            "thermal":   "#FF8C69",   # light salmon / coral
+            "rainbow":   "#00BFFF",   # deep sky blue
+            "plasma":    "#DA70D6",   # orchid / violet
+        }.get(theme, "#C0C0C0")
 
         brain_mesh = go.Mesh3d(
             x=verts[:, 0], y=verts[:, 1], z=verts[:, 2],
             i=faces[:, 0], j=faces[:, 1], k=faces[:, 2],
-            color=theme_color[0],
-            opacity=0.25,
+            color=theme_color,
+            opacity=0.35,
             flatshading=False,
             lighting=dict(
                 ambient=0.5,
@@ -236,26 +236,26 @@ def _apply_layout(fig: go.Figure, theme: str) -> None:
             "text": f"3D Brain Tumor Visualization ({theme.capitalize()} Theme)",
             "x": 0.5,
             "xanchor": "center",
-            "font": {"color": "black", "size": 18, "family": "Arial, sans-serif"},
+            "font": {"color": "white", "size": 18, "family": "Arial, sans-serif"},
         },
-        paper_bgcolor="white",
+        paper_bgcolor="#020617",        # GFG dark background
         scene=dict(
-            xaxis=dict(visible=False, backgroundcolor="white"),
-            yaxis=dict(visible=False, backgroundcolor="white"),
-            zaxis=dict(visible=False, backgroundcolor="white"),
-            bgcolor="white",
+            xaxis=dict(visible=False, backgroundcolor="#020617"),
+            yaxis=dict(visible=False, backgroundcolor="#020617"),
+            zaxis=dict(visible=False, backgroundcolor="#020617"),
+            bgcolor="#020617",           # 3D scene — dark
             camera=dict(
                 eye=dict(x=1.5, y=1.5, z=1.2),
                 up=dict(x=0, y=0, z=1),
             ),
-            aspectmode="data",  # preserve real proportions
+            aspectmode="data",
         ),
         margin=dict(l=0, r=0, t=60, b=0),
         height=620,
         legend=dict(
-            font=dict(color="black", size=13),
-            bgcolor="rgba(255,255,255,0.85)",
-            bordercolor="rgba(0,0,0,0.15)",
+            font=dict(color="white", size=13),
+            bgcolor="rgba(255,255,255,0.08)",
+            bordercolor="rgba(255,255,255,0.2)",
             borderwidth=1,
         ),
     )
