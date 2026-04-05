@@ -77,8 +77,20 @@ def _mesh_pipeline(mri_data, mask, theme):
         else:
             mask_ds = mask_f
 
-        # Make mask strictly binary
-        mask_ds = (mask_ds > 0.5).astype("float32")
+        # ── 4. Clean mask: strict binary + keep ONLY largest connected region ──
+        # Critical: noisy/scattered mask → cube artifact in marching cubes
+        from scipy.ndimage import label as scipy_label
+        mask_bin = (mask_ds > 0.5).astype(np.uint8)
+
+        # Keep only the largest connected component (eliminates noise blobs)
+        labeled, num_components = scipy_label(mask_bin)
+        if num_components > 1:
+            sizes = [(labeled == i).sum() for i in range(1, num_components + 1)]
+            largest_label = int(np.argmax(sizes)) + 1
+            mask_bin = (labeled == largest_label).astype(np.uint8)
+            logger.info(f"Kept largest component ({sizes[largest_label-1]} vx) of {num_components} found.")
+
+        mask_ds = mask_bin.astype("float32")
 
         # ── 4. Smooth brain slightly for nicer surface ─────────────────────────
         brain_smooth = gaussian_filter(brain_ds, sigma=1.0)
@@ -115,16 +127,21 @@ def _mesh_pipeline(mri_data, mask, theme):
             showlegend=True,
         )
 
-        # ── 7. Extract tumor surface ───────────────────────────────────────────
+        # ── 7. Tumor surface — safe extraction with noise guard ────────────────
         traces = [brain_mesh]
 
-        if mask_ds.max() > 0:
+        tumor_voxel_count = int(mask_ds.sum())
+        MIN_TUMOR_VOXELS = 50
+
+        if tumor_voxel_count >= MIN_TUMOR_VOXELS:
             try:
-                # Smooth mask slightly to get rounded tumor surface
-                mask_smooth = gaussian_filter(mask_ds, sigma=0.8)
-                t_verts, t_faces, _, _ = marching_cubes(mask_smooth, level=0.5,
-                                                         allow_degenerate=False)
-                print(f"[3D Mesh] Tumor — verts:{len(t_verts):,}  faces:{len(t_faces):,}")
+                # Light smooth after cleaning — preserves shape, rounds edges
+                mask_smooth = gaussian_filter(mask_ds, sigma=1.0)
+                t_verts, t_faces, _, _ = marching_cubes(
+                    mask_smooth, level=0.5, allow_degenerate=False
+                )
+                print(f"[3D Mesh] Tumor — voxels:{tumor_voxel_count}  "
+                      f"verts:{len(t_verts):,}  faces:{len(t_faces):,}")
 
                 tumor_mesh = go.Mesh3d(
                     x=t_verts[:, 0], y=t_verts[:, 1], z=t_verts[:, 2],
