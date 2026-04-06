@@ -1,0 +1,22 @@
+# Production requirements for Brain Tumor Analysis AI
+# Root-level file for Render deployment
+
+# ── Web framework ──────────────────────────────────────────────────────────
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# ── UI ─────────────────────────────────────────────────────────────────────
+gradio>=4.0.0
+
+# ── AI / ML ────────────────────────────────────────────────────────────────
+torch>=2.0.0
+monai>=1.2.0
+
+# ── Data / Viz ─────────────────────────────────────────────────────────────
+numpy>=1.24.0
+matplotlib>=3.7.0
+plotly>=5.15.0
+pandas>=2.0.0
+scipy>=1.11.0
+scikit-image>=0.21.0
