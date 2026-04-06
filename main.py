@@ -7,7 +7,13 @@ Run on Render: start command is  uvicorn main:app --host 0.0.0.0 --port $PORT
 
 import os
 import io
+import sys
 import logging
+
+# ── Import Path Management ──────────────────────────────────────────────────
+# Ensure project root is in sys.path for robust imports in cloud environments
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
