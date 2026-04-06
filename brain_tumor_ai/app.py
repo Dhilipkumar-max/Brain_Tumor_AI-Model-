@@ -288,7 +288,6 @@ with gr.Blocks(
                     slice_output = gr.Image(
                         label="Multi-Plane MRI Views (Axial · Sagittal · Coronal)",
                         type="filepath",
-                        show_download_button=True,
                     )
 
                 # Tab 2 — 3D interactive
